@@ -1,0 +1,98 @@
+<xs:schema
+   targetNamespace="urn:metaschema"
+   xmlns:xs="http://www.w3.org/2001/XMLSchema"
+   xmlns:nonstd="urn:non-standard-helper"
+   xmlns="urn:metaschema">
+<!--
+## MetaSchema is a schema for building schemas.  Its is a very
+## simplified model of XMLSchema.
+-->
+
+<xs:complexType name="Element">
+  <xs:sequence>
+  </xs:sequence>
+  <xs:attribute name="name" type="xs:string" use="required"/>
+  <xs:attribute name="type" type="xs:string" use="optional"/>
+  <xs:attribute name="minOccurs" type="xs:string" use="optional"/>
+  <xs:attribute name="maxOccurs" type="xs:string" use="optional"/>
+</xs:complexType>
+
+<xs:complexType name="Attribute">
+  <xs:sequence>
+  </xs:sequence>
+  <xs:attribute name="name" type="xs:string" use="required"/>
+  <xs:attribute name="type" type="xs:string" use="optional"/>
+  <xs:attribute name="use" type="xs:string" use="optional"/>
+</xs:complexType>
+
+<xs:complexType name="All">
+  <xs:sequence>
+    <xs:element name="element" type="Element" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="Choice">
+  <xs:sequence>
+    <xs:element name="element" type="Element" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="Sequence">
+  <xs:sequence>
+    <xs:element name="element" type="Element" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+  <xs:attribute name="minOccurs" type="xs:string" use="optional"/>
+  <xs:attribute name="maxOccurs" type="xs:string" use="optional"/>
+</xs:complexType>
+
+<xs:complexType name="Extension">
+  <xs:sequence>
+    <xs:element name="sequence" type="Sequence" minOccurs="0" maxOccurs="1"/>
+    <xs:element name="all" type="All" minOccurs="0" maxOccurs="1"/>
+    <xs:element name="attribute" type="Attribute" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+  <xs:attribute name="base" type="xs:string" use="required"/>
+</xs:complexType>
+
+
+<xs:complexType name="SimpleContent">
+  <xs:sequence>
+    <xs:element name="extension" type="Extension" minOccurs="0" maxOccurs="1"/>
+  </xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="ComplexType">
+  <xs:sequence>
+    <xs:element name="sequence" type="Sequence" minOccurs="0" maxOccurs="1"/>
+    <xs:element name="all" type="All" minOccurs="0" maxOccurs="1"/>
+    <xs:element name="choice" type="Choice" minOccurs="0" maxOccurs="1"/>
+    <xs:element name="simpleContent" type="SimpleContent" minOccurs="0" maxOccurs="1"/>
+    <xs:element name="attribute" type="Attribute" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+  <xs:attribute name="name" type="xs:string" use="required"/>
+  <!--
+  ## This non-standard element is used to preserve information from
+  ## XML documents about the location of various nodes.  This is so
+  ## you can merge an auto-generated schema with new information from
+  ## additional XML documents.
+  ##
+  ## The weird notation is because the bubbles library doesn't do a
+  ## namespace expansion on the "name" attribute, so I'm using the
+  ## notation used by libxml2.
+  -->
+  <xs:attribute name="{urn:nonstd}path" type="xs:string" use="optional"/>
+</xs:complexType>
+
+<xs:complexType name="Schema">
+  <xs:sequence>
+    <xs:element name="complexType" type="ComplexType" minOccurs="0" maxOccurs="unbounded"/>
+    <xs:element name="element" type="Element" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+  <xs:attribute name="targetNamespace" type="xs:string" use="optional"/>
+  <xs:attribute name="elementFormDefault" type="xs:string" use="optional"/>
+  <xs:attribute name="attributeFormDefault" type="xs:string" use="optional"/>
+</xs:complexType>
+<!--
+vim: ts=2 sts=2 sw=2 expandtab:
+-->
+</xs:schema>
