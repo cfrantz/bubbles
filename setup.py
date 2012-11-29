@@ -5,6 +5,7 @@ from bubbles import __version__
 
 setup(
         name='bubbles',
+        version=__version__,
         description='bubbles: a simply dynamic SOAP library',
         author='Chris Frantz',
         author_email='chris.frantz@hp.com',
