@@ -105,6 +105,9 @@ class xs_float(xs_type):
     def fromstr(cls, value):
         return float(value)
 
+class xs_decimal(xs_float):
+    pass
+
 class xs_double(xs_float):
     pass
 
@@ -166,6 +169,7 @@ converters = {
         'xs:unsignedShort': xs_unsignedShort,
         'xs:unsignedInt': xs_unsignedInt,
         'xs:unsignedLong': xs_unsignedLong,
+        'xs:decimal': xs_decimal,
         'xs:float': xs_float,
         'xs:double': xs_double,
         'xs:dateTime': xs_dateTime,

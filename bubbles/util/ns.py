@@ -110,7 +110,7 @@ def expand(s, nsmap={}, **kwargs):
 
 def split(s, nsmap={}, **kwargs):
     '''
-    Expand a string with a namespace.
+    Split a string with a namespace.
 
     @type s: str
     @param s: String to expand

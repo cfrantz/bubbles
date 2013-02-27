@@ -81,7 +81,16 @@ class DynamicObject(object):
         if isinstance(items, dict):
             items = items.items()
         for k,v in items:
-            if isinstance(v, dict):
+            if isinstance(v, dict) and getattr(v, 'listlike', False):
+                # A dict with integer keys (objectpath: foo.bar.7.baz='hello')
+                # Unfortunately, this won't handle list-of-list or empty lists
+                v2 = []
+                for x in v:
+                    if isinstance(x, dict):
+                        x = DynamicObject(x)
+                    v2.append(x)
+                v = v2
+            elif isinstance(v, dict):
                 # Translate sub-dictionaries into DynamicObject
                 v = DynamicObject(v)
             elif isinstance(v, list):
@@ -183,8 +192,8 @@ class DynamicObject(object):
                 pass
             else:
                 self.__property__ = 'value'
-                # Set this via fromiter so it will get munged by
-                # _make_type if this happens to be a SchemaObject
+                # Pass it to __fromiter__ so if this is a SchemaObject,
+                # the value can be consumed by _make_type.
                 self.__fromiter__({'value': arg})
         self.__fromiter__(kwargs.items())
 
@@ -339,6 +348,9 @@ class DynamicObject(object):
         '''
         for k in self.__keylist__[:]:
             delattr(self, k)
+
+    def __asdict__(self):
+        return dict(self, __classname__=self.__class__.__name__)
 
     def __repr__(self):
         return ''.join(self.__print__(self, []))

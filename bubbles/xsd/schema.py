@@ -47,6 +47,7 @@ ATTRIBUTE =4
 CHOICE =   8
 ANY =      16
 QUALIFIED =32
+SIMPLE    =64
 xsi_type = ET.QName(ns.XSI, 'type')
 xsi_nil = ET.QName(ns.XSI, 'nil')
 xsi_nil_true = {xsi_nil: "true"}
@@ -62,6 +63,7 @@ class _SchemaLoader:
     def __init__(self):
         self.schemas = {}
         self.allns = {}
+        self.revns = {}
 
     def __call__(self):
         return _SchemaLoader()
@@ -102,6 +104,7 @@ class _SchemaLoader:
         # Update our "all namespaces" dictionary and get references to the
         # various subdictionaries we'll need
         self.allns.update(root.nsmap)
+        self.revns.update((v,k) for k,v in root.nsmap.items() if k not in (None, 'tns'))
         types = self.schemas[targetNamespace]['types']
         elements = self.schemas[targetNamespace]['elements']
         groups = self.schemas[targetNamespace]['groups']
@@ -172,6 +175,21 @@ class _SchemaLoader:
             (namespace, name) = ns.split(namespace)
         return self.schemas[namespace]['root']
 
+    def prefix(self, namespace, joinchar=':'):
+        '''
+        Get the ns prefix schema corresponding to namespace
+
+        If given a full typename like {http://aaa}foobar, this function
+        will return nsprefix:typename
+        '''
+        if '}' in namespace:
+            nsname = list(ns.split(namespace))
+        else:
+            nsname = [namespace]
+
+        nsname[0] = self.revns[nsname[0]]
+        return joinchar.join(nsname)
+
     def type(self, name):
         '''Get the type corresponding to name'''
         (namespace, name) = ns.split(name)
@@ -207,7 +225,7 @@ class _SchemaLoader:
         if validator(element) == False:
             errlog = validator.error_log
             if onerror == 'log':
-                log.error('Schema Validation Error: %s', errlog)
+                log.error('Schema Validation Error: %s', str(errlog))
             elif onerror == 'pass':
                 pass
             else:
@@ -229,6 +247,58 @@ class SchemaObject(DynamicObject):
     __builder__ = None
     __template__ = ()
     __validate__ = False
+    __simple__ = None
+
+    # The __new__ hook is used to recognize types that are simpleTypes
+    # and return a true primitive type rather than a SchemaObject
+    # derived wrapper type.
+    #
+    # This means that when the Builder.factory is used to construct
+    # a classobject for a simpleType, a class that derives from
+    # SchemaObject is returned.  However, when an instance is
+    # constructed, the __new__ method recognizes that the object is
+    # really supposed to be a primitive type and returns an instance
+    # of a primitive type to the user
+    #
+    # Example:
+    #
+    # ## Imagine UserType is a simpleType restiction to xs:string
+    # xml = ET.parse("<user>joe</user>")
+    # cls = builder.factory("{mynamespace}UserType")
+    # user = cls(xml)
+    # isinstance(user, basestring) == True
+    #
+    # ## voila -> although cls is {mynamespace}UserType, constructing
+    # ## it results in a python primitive type.
+    #
+    # Caveat:
+    #
+    # Construting a xs:simpleType with an argument of None results
+    # in None, not an empty instance of the target type:
+    #
+    # cls = builder.factory("{mynamespace}UserType")
+    # user = cls(None)
+    # isinstance(user, basestring) == False
+    # (user is None) == True
+    # 
+    # While it can be argued that for strings, we should return empty
+    # string, I don't think you can make a similar argument for other
+    # primitive types like int, float or dateTime.  You'll get None
+    # and you'll like it.
+    def __new__(cls, *args, **kw):
+        inst = object.__new__(cls)
+        if cls.__simple__:
+            if len(args):
+                arg=args[0]
+            else:
+                # If the class is an Enumeration and there are no
+                # arguments, then construct normally so the user gets
+                # an object with "constant" values in it.
+                if issubclass(cls, Enumeration):
+                    return inst
+                arg=None
+            return inst._make_type(arg, cls.__simple__)
+        return inst
 
     @classmethod
     def _template(cls):
@@ -307,12 +377,17 @@ class SchemaObject(DynamicObject):
                 # List of elements
                 if value is None:
                     value = []
-                if not isinstance(value, (list, tuple)):
+                elif isinstance(value, (list, tuple)):
+                    # A real list
+                    value = [self._make_type(v, type) for v in value]
+                elif isinstance(value, dict) and getattr(value, 'listlike', False):
+                    # A dict with integer keys (we hope)
+                    value = [self._make_type(v, type) for v in value]
+                else:
                     if self.__relax__:
                         value = []
                     else:
                         raise TypeError('Field must be a list', name)
-                value = [self._make_type(v, type) for v in value]
             self[name] = value
 
         # If this type has an xs:any node, set all the remaining items
@@ -434,6 +509,12 @@ class SchemaObject(DynamicObject):
                     n = ET.Element(qname)
                     n.text = converter(type).tostr(v)
                     node.append(n)
+                elif flags & SIMPLE:
+                    # Primitive type
+                    type = self.__builder__.factory(type).__simple__
+                    n = ET.Element(qname)
+                    n.text = converter(type).tostr(v)
+                    node.append(n)
                 elif isinstance(v, DynamicObject):
                     # Dynamic object or subclass, so marshall and append
                     n = v.__xml__(name)
@@ -531,7 +612,8 @@ class Builder:
             if node is None:
                 node = self.loader.element(typename)
                 if node is not None and 'type' in node.attrib:
-                    cls = self._factory(node.get('type'))
+                    tns, _ = self.nssplit(typename)
+                    cls = self._factory(node.get('type'), targetNamespace=tns)
 
             if node is not None and cls is None:
                 self.process(node)
@@ -562,7 +644,6 @@ class Builder:
     def pop(self, state):
         (self.typename, self.template, self.extension, self.restriction, self.flags) = state
 
-
     def process(self, nodelist, **kwargs):
         if not isinstance(nodelist, list):
             nodelist = [nodelist]
@@ -589,8 +670,11 @@ class Builder:
         type = node.get('type')
         (namespace, type) = self.nssplit(type)
         if namespace != ns.XS:
-            raise TypeError("Attribute types must be xs:types", type)
-        type = 'xs:%s' % type
+            cls = self._factory(self.nsexpand(type))
+            if not cls.__simple__:
+                raise TypeError("Attribute types must be xs:types or xs:simpleTypes", type)
+        else:
+            type = 'xs:%s' % type
 
         default = node.get('default')
         if not default:
@@ -606,11 +690,27 @@ class Builder:
 
     def xs_element(self, node, **kwargs):
         ref = node.get('ref')
+        default = None
+        min = self.minOccurs
+        max = self.maxOccurs
+        nil = 'false'
         if ref is not None:
-            node = self.loader.element(self.nsexpand(ref))
+            refnode = self.loader.element(self.nsexpand(ref))
+            name = refnode.get('name')
+            type = refnode.get('type')
+            default = refnode.get('default', default)
+            min = refnode.get('minOccurs', min)
+            max = refnode.get('maxOccurs', max)
+            nil = refnode.get('nillable', nil)
+        else:
+            name = node.get('name')
+            type = node.get('type')
 
-        name = node.get('name')
-        type = node.get('type')
+        default = node.get('default', default)
+        min = self.tryint(node.get('minOccurs', min))
+        max = self.tryint(node.get('maxOccurs', max))
+        nil = int(converter('xs:boolean').fromstr(node.get('nillable', nil)))
+
         if type is None:
             if self.typename:
                 type = '%s_%s' % (self.typename, name)
@@ -625,10 +725,6 @@ class Builder:
             else:
                 type = '{%s}%s' % (namespace, type)
 
-        default = node.get('default')
-        min = self.tryint(node.get('minOccurs', self.minOccurs))
-        max = self.tryint(node.get('maxOccurs', self.maxOccurs))
-        nil = int(converter('xs:boolean').fromstr(node.get('nillable', 'false')))
         self.template.append((name, type, default, (min, max), self.flags | nil))
 
     def xs_enumeration(self, node, **kwargs):
@@ -677,25 +773,27 @@ class Builder:
             '__template__': self.template,
             '__namespace__': self.root.get('targetNamespace'),
             '__builder__': self,
+            '__simple__': self.restriction,
         }
         bases = self.bases + (self.extension,)
         t = type(self.typename, bases, cvars)
         self.cache[self.typename] = t
 
-        # Examine the template.  Replace enumerated types with the
-        # type from which they are derived.
+        # Examine the template.  Set the simple flag for any
+        # derived simple types.  This will be used when marshalling
+        # to XML
         for i in range(len(self.template)):
             clsname = self.template[i][1]
             if clsname.startswith('xs:'):
                 continue
             cls = self._factory(clsname)
-            if Enumeration in cls.__mro__:
+            if cls.__simple__:
                 self.template[i] = (
                         self.template[i][0],
-                        cls.__template__[0][1],
+                        self.template[i][1],
                         self.template[i][2],
                         self.template[i][3],
-                        self.template[i][4])
+                        self.template[i][4] | SIMPLE)
 
         # Merge all templates from the class heirarchy
         t.__template__ = t._template()
@@ -741,8 +839,8 @@ class Builder:
             base = 'xs:'+type
             self.template.append(('value', base, None, (0, 1), self.flags | PROPERTY))
         else:
-            cls = self._factory(base)
-            if Enumeration in cls.__mro__:
+            cls = self._factory(self.nsexpand(base))
+            if issubclass(cls, Enumeration):
                 base = cls.__template__[0][1]
                 self.template.append(('value', base, None, (0, 1), self.flags | PROPERTY))
             else:
