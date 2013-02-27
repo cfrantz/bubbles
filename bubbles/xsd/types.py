@@ -29,7 +29,7 @@
 #
 #####################################################
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, time
 
 class xs_type:
     @classmethod
@@ -132,6 +132,7 @@ class xs_dateTime(xs_type):
                 #       7        microseconds (optional) - will NOT have leading decimal
                 #       8        timezone offset hours (optional) - WILL have leading sign character
                 #       9        timezone offset minutes (optional,but must exist if group 8 exists)
+
                 tm = datetime(int(match.group(1),10),
                              int(match.group(2),10),
                              int(match.group(3),10),
@@ -157,6 +158,83 @@ class xs_dateTime(xs_type):
             return None
         return value.isoformat()
 
+_date = re.compile(r'(\d{4})-?(\d{2})-?(\d{2})(?:Z|(?:([+-]\d{2}):?(\d{2})))?')
+class xs_date(xs_type):
+    @classmethod
+    def check(cls, value):
+        return isinstance(value, date)
+
+    @classmethod
+    def fromstr(cls, value):
+        try:
+            match = _date.match(value)
+            if match:
+                # ISO string matches the basic format. See if we have any "extra" bits
+                # group 1 is the year
+                #       2        month
+                #       3        day of month
+                #       4        timezone offset hours (optional) - WILL have leading sign character
+                #       5        timezone offset minutes (optional,but must exist if group 4 exists)
+                d = date(int(match.group(1), 10),
+                        int(match.group(2), 10),
+                        int(match.group(3), 10))
+
+                # FIXME: Ignore timezone for now
+                return d
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def tostr(cls, value):
+        if value is None:
+            return None
+        return value.isoformat()
+
+_time = re.compile(r'(\d{2}):?(\d{2}):?(\d{2})(?:\.(\d{6}))?(?:Z|(?:([+-]\d{2}):?(\d{2})))?')
+class xs_time(xs_type):
+    @classmethod
+    def check(cls, value):
+        return isinstance(value, time)
+
+    @classmethod
+    def fromstr(cls, value):
+        try:
+            match = _time.match(value)
+            if match:
+                # ISO string matches the basic format. See if we have any "extra" bits
+                # group 
+                #       1        hours
+                #       2        minutes
+                #       3        seconds
+                #       4        microseconds (optional) - will NOT have leading decimal
+                #       5        timezone offset hours (optional) - WILL have leading sign character
+                #       6        timezone offset minutes (optional,but must exist if group 5 exists)
+                microseconds = 0
+                if match.group(4) is not None:
+                    microseconds = int(match.group(4),10)
+            
+                tm = time(int(match.group(1),10),
+                             int(match.group(2),10),
+                             int(match.group(3),10),
+                             microseconds)
+
+                # FIXME: Ignore timezone for now
+                #if match.group(5) is not None:
+                #    # if group 5 is present, then group 6 is also
+                #    tm += timedelta(hours=int(match.group(5),10),minutes=int(match.group(6),10))
+                return tm
+        except:
+            pass
+        return None
+
+    @classmethod
+    def tostr(cls, value):
+        if value is None:
+            return None
+        return value.isoformat()
+
+
 converters = {
         'xs:string': xs_string,
         'xs:boolean': xs_boolean,
@@ -173,6 +251,8 @@ converters = {
         'xs:float': xs_float,
         'xs:double': xs_double,
         'xs:dateTime': xs_dateTime,
+        'xs:date': xs_date,
+        'xs:time': xs_time,
 }
 
 def converter(typestr):

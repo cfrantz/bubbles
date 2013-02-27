@@ -27,7 +27,7 @@
 # Description:
 #
 #####################################################
-__version__ = '0.0.1'
+__version__ = '0.0.2'
 
 # VIM options (place at end of file)
 # vim: ts=4 sts=4 sw=4 expandtab:

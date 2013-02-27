@@ -835,15 +835,18 @@ class Builder:
     def xs_extension(self, node, **kwargs):
         base = node.get('base')
         (namespace, type) = self.nssplit(base)
+        # If we're extending a simpleType (xs:type or a derived xs:simpleType),
+        # then this is a "property" object.
         if namespace == ns.XS:
             base = 'xs:'+type
             self.template.append(('value', base, None, (0, 1), self.flags | PROPERTY))
         else:
-            cls = self._factory(self.nsexpand(base))
-            if issubclass(cls, Enumeration):
-                base = cls.__template__[0][1]
+            base = self.nsexpand(base)
+            cls = self._factory(base)
+            if cls.__simple__:
                 self.template.append(('value', base, None, (0, 1), self.flags | PROPERTY))
             else:
+                # Otherwise we're extending a complexType
                 self.extension = cls
         self.process(node.getchildren(), **kwargs)
 

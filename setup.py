@@ -6,11 +6,11 @@ from bubbles import __version__
 setup(
         name='bubbles',
         version=__version__,
-        description='bubbles: a simply dynamic SOAP library',
+        description='bubbles: a simple dynamic SOAP library',
         author='Chris Frantz',
         author_email='chris.frantz@hp.com',
         url='http://github.com/cfrantz/bubbles',
-        packages=['bubbles'],
+        packages=['bubbles', 'bubbles.soap', 'bubbles.util', 'bubbles.xsd'],
         license='LGPL_v2.1',
 )
 
